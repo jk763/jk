@@ -1,1 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>과목별 시간 기록기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+    select, button { font-size: 16px; padding: 8px 12px; margin: 5px; }
+    #timer { font-size: 32px; margin: 20px 0; }
+    .summary { max-width: 500px; margin: 30px auto; text-align: left; }
+    canvas { max-width: 100%; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>📚 과목별 시간 기록기</h1>
+  <div>
+    <label for="subjectSelect">과목 선택:</label>
+    <select id="subjectSelect">
+      <option value="노동법1">노동법1</option>
+      <option value="노동법2">노동법2</option>
+      <option value="사회보험법">사회보험법</option>
+      <option value="민법">민법</option>
+      <option value="경영학개론">경영학개론</option>
+      <option value="기타">기타</option>
+    </select>
+  </div>
+  <div id="timer">00:00:00</div>
+  <button id="startBtn">▶️ 시작</button>
+  <button id="pauseBtn" disabled>⏸️ 일시정지</button>
+  <button id="stopBtn" disabled>⏹️ 정지</button>
+  <div class="summary">
+    <h3>📊 과목별 누적 시간</h3>
+    <ul id="subjectSummary"></ul>
+  </div>
+  <canvas id="subjectChart"></canvas>
+  <script>
+    let startTime, timerInterval, accumulated = 0, isPaused = false;
+    const timerDisplay = document.getElementById('timer');
+    const subjectSelect = document.getElementById('subjectSelect');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const summaryList = document.getElementById('subjectSummary');
+    const chartCtx = document.getElementById('subjectChart').getContext('2d');
+    const subjects = ["노동법1", "노동법2", "사회보험법", "민법", "경영학개론", "기타"];
+    const storageKey = 'studySubjectRecords';
 
+    function format(sec) {
+      const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    function load() {
+      return JSON.parse(localStorage.getItem(storageKey) || '{}');
+    }
+
+    function save(subject, seconds) {
+      const records = load();
+      records[subject] = (records[subject] || 0) + seconds;
+      localStorage.setItem(storageKey, JSON.stringify(records));
+    }
+
+    function updateSummary() {
+      const records = load();
+      summaryList.innerHTML = '';
+      subjects.forEach(sub => {
+        const sec = records[sub] || 0;
+        const li = document.createElement('li');
+        li.textContent = `${sub}: ${format(sec)}`;
+        summaryList.appendChild(li);
+      });
+      drawChart(records);
+    }
+
+    function drawChart(records) {
+      const data = subjects.map(s => records[s] || 0);
+      const chartData = {
+        labels: subjects,
+        datasets: [{
+          label: '누적 시간 (초)',
+          data: data,
+          backgroundColor: 'rgba(75,192,192,0.6)'
+        }]
+      };
+      if (window.subjectChart) window.subjectChart.destroy();
+      window.subjectChart = new Chart(chartCtx, {
+        type: 'bar',
+        data: chartData,
+        options: {
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => `${format(ctx.raw)}`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: v => format(v)
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function startTimer() {
+      if (!isPaused) accumulated = 0;
+      startTime = Date.now();
+      timerInterval = setInterval(() => {
+        const sec = Math.floor((Date.now() - startTime) / 1000) + accumulated;
+        timerDisplay.textContent = format(sec);
+      }, 1000);
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+      stopBtn.disabled = false;
+      isPaused = false;
+    }
+
+    function pauseTimer() {
+      clearInterval(timerInterval);
+      accumulated += Math.floor((Date.now() - startTime) / 1000);
+      pauseBtn.disabled = true;
+      startBtn.disabled = false;
+      isPaused = true;
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      const seconds = Math.floor((Date.now() - startTime) / 1000) + accumulated;
+      const subject = subjectSelect.value;
+      save(subject, seconds);
+      timerDisplay.textContent = "00:00:00";
+      accumulated = 0;
+      isPaused = false;
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+      updateSummary();
+    }
+
+    startBtn.onclick = startTimer;
+    pauseBtn.onclick = pauseTimer;
+    stopBtn.onclick = stopTimer;
+    updateSummary();
+  </script>
+</body>
+</html>
