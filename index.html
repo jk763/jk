@@ -1,0 +1,68 @@
+<!-- 피티가 만들어준 Firebase 연동 HTML 예시입니다 -->
+<!-- 실제 동작을 위해선 아래 Firebase 설정을 사용자의 프로젝트 정보로 바꿔주세요 -->
+
+<!DOCTYPE html>
+<html lang="="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Firebase 시간 기록기</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <h1>📚 시간 기록기 (Firebase 연동)</h1>
+  <button onclick="signIn()">🔐 Google 로그인</button>
+  <button onclick="signOut()">🚪 로그아웃</button>
+  <button onclick="useGuest()">👤 게스트로 사용</button>
+
+  <div id="status"></div>
+
+  <script>
+    // TODO: 이곳을 너의 Firebase 정보로 바꿔줘!
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    let userId = null;
+
+    function updateStatus(text) {
+      document.getElementById('status').textContent = text;
+    }
+
+    function signIn() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider)
+        .then(result => {
+          userId = result.user.uid;
+          updateStatus("✅ 로그인됨: " + result.user.email);
+        })
+        .catch(error => {
+          console.error(error);
+          updateStatus("❌ 로그인 실패");
+        });
+    }
+
+    function signOut() {
+      auth.signOut().then(() => {
+        userId = null;
+        updateStatus("🚪 로그아웃됨");
+      });
+    }
+
+    function useGuest() {
+      userId = "guest";
+      updateStatus("👤 게스트로 사용 중");
+    }
+  </script>
+</body>
+</html>
