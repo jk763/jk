@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>과목별 시간 기록기</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f9fafb;
+      margin: 0;
+      padding: 2rem;
+      text-align: center;
+    }
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 20px;
+      padding: 2rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-bottom: 1rem;
+    }
+    select, button {
+      font-size: 16px;
+      padding: 10px 20px;
+      margin: 8px 5px;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+    }
+    button:disabled {
+      opacity: 0.5;
+    }
+    #timer {
+      font-size: 36px;
+      margin: 1.5rem 0;
+    }
+    .summary-box {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 1rem;
+      font-size: 1rem;
+    }
+    .summary-box div {
+      background: #f3f4f6;
+      padding: 1rem;
+      border-radius: 12px;
+      flex: 1;
+      margin: 0 0.5rem;
+    }
+    canvas {
+      max-width: 100%;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📚 과목별 시간 기록기</h1>
+    <div>
+      <select id="subjectSelect">
+        <option value="노동법1">노동법1</option>
+        <option value="노동법2">노동법2</option>
+        <option value="사회보험법">사회보험법</option>
+        <option value="민법">민법</option>
+        <option value="경영학개론">경영학개론</option>
+        <option value="기타">기타</option>
+      </select>
+    </div>
+    <div id="timer">00:00:00</div>
+    <button id="startBtn">▶️ 시작</button>
+    <button id="pauseBtn" disabled>⏸️ 일시정지</button>
+    <button id="stopBtn" disabled>⏹️ 정지</button>
+    <div class="summary-box">
+      <div><strong>📅 오늘</strong><br/><span id="daily">00:00:00</span></div>
+      <div><strong>📈 이번 주</strong><br/><span id="weekly">00:00:00</span></div>
+      <div><strong>📊 이번 달</strong><br/><span id="monthly">00:00:00</span></div>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+  <script>
+    let startTime, timerInterval, accumulated = 0, isPaused = false;
+    const timerDisplay = document.getElementById('timer');
+    const subjectSelect = document.getElementById('subjectSelect');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    const storageKey = 'studySubjectRecords';
+    let chart;
+
+    function format(sec) {
+      const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    function load() {
+      return JSON.parse(localStorage.getItem(storageKey) || '{}');
+    }
+
+    function save(subject, date, seconds) {
+      const records = load();
+      if (!records[subject]) records[subject] = {};
+      records[subject][date] = (records[subject][date] || 0) + seconds;
+      localStorage.setItem(storageKey, JSON.stringify(records));
+    }
+
+    function getTodayKey() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function getWeekKey(date) {
+      const d = new Date(date);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const week = Math.ceil((d.getDate() - d.getDay() + 1) / 7);
+      return `${year}년 ${month}월의 ${week}주`;
+    }
+
+    function updateSummary(subject) {
+      const records = load();
+      const now = new Date();
+      let daily = 0, weekly = 0, monthly = 0;
+
+      if (records[subject]) {
+        for (let dateStr in records[subject]) {
+          const d = new Date(dateStr);
+          const sec = records[subject][dateStr];
+
+          if (dateStr === getTodayKey()) daily += sec;
+
+          const monday = new Date(now);
+          monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+          const sunday = new Date(monday);
+          sunday.setDate(monday.getDate() + 6);
+          if (d >= monday && d <= sunday) weekly += sec;
+
+          if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth())
+            monthly += sec;
+        }
+      }
+
+      document.getElementById('daily').textContent = format(daily);
+      document.getElementById('weekly').textContent = format(weekly);
+      document.getElementById('monthly').textContent = format(monthly);
+    }
+
+    function drawChart(subject) {
+      const records = load();
+      const today = new Date();
+      const data = [];
+      const labels = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
+        const sec = records[subject]?.[key] || 0;
+        data.push(sec);
+      }
+
+      if (chart) chart.destroy();
+      const ctx = document.getElementById('chart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '최근 7일 시간 (초)',
+            data: data,
+            backgroundColor: 'rgba(75, 192, 192, 0.6)'
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: v => format(v)
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => format(ctx.raw)
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function startTimer() {
+      if (!isPaused) accumulated = 0;
+      startTime = Date.now();
+      timerInterval = setInterval(() => {
+        const sec = Math.floor((Date.now() - startTime) / 1000) + accumulated;
+        timerDisplay.textContent = format(sec);
+      }, 1000);
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+      stopBtn.disabled = false;
+      isPaused = false;
+    }
+
+    function pauseTimer() {
+      clearInterval(timerInterval);
+      accumulated += Math.floor((Date.now() - startTime) / 1000);
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      isPaused = true;
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      const seconds = Math.floor((Date.now() - startTime) / 1000) + accumulated;
+      const subject = subjectSelect.value;
+      save(subject, getTodayKey(), seconds);
+      timerDisplay.textContent = "00:00:00";
+      accumulated = 0;
+      isPaused = false;
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+      updateSummary(subject);
+      drawChart(subject);
+    }
+
+    startBtn.onclick = startTimer;
+    pauseBtn.onclick = pauseTimer;
+    stopBtn.onclick = stopTimer;
+    subjectSelect.onchange = () => {
+      updateSummary(subjectSelect.value);
+      drawChart(subjectSelect.value);
+    };
+
+    updateSummary(subjectSelect.value);
+    drawChart(subjectSelect.value);
+  </script>
+</body>
+</html>
